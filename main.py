@@ -792,7 +792,11 @@ class mssApp:
     def loadTeam(self,en, ba, fl, num):
         tm = teams[num].copy()
         for i in range(9):
-            c = charList[tm[i][0]]
+            c = ""
+            try:
+                c = charList[tm[i][0]]
+            except:
+                print("Invalid Mii Detected")
             en[i].set(c)
             set_entry(ba[tm[i][1]], c)
             set_entry(fl[tm[i][2]], c)
