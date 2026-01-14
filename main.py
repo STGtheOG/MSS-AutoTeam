@@ -38,7 +38,7 @@ def str_to_hex(str):
             n = ord(c)-ord('0')
             hx += n
     return hx
-#r"C:\Users\Ryan Schwartz\Documents\Dolphin Emulator\Wii\shared2\menu\FaceLib\RFL_DB.dat"
+
 
 mii_list = []
 try:
@@ -155,7 +155,7 @@ class Formationizer:
                 v = arr[i][0]
                 while v >= 10:
                     v -= 10
-                    self.execute("rrrrrar")
+                    self.execute("rrrrralllll")
                 for n in range(v % 5):
                     self.press_right()
                 if v >= 5:
@@ -565,7 +565,7 @@ class mssApp:
         buttonStart = tk.Button(tabMain, text="Run it!", command=myFormationizer.automate)
         buttonStart.grid(row=3,column=0)
         labelWarning = tk.Label(tabMain, text="Before using, make sure you have the following Gecko code enabled: \n040802b4 60000000\n040802b8 60000000\n0406aed8 48000b80\n"+
-                                              "And set these to the controls:\nWSAD = Up/Down/Left/Right\nK = A button\nL = B button\nQ = + button\nE = - button\n"+
+                                              "And set these to the controls:\nWSAD = Up/Down/Left/Right\nK = A button\nL = B button\nQ = - button\nE = + button\n"+
                                               "Hit the Run button while the game is open and you are \nat the main menu, hovering \"Exhibition Mode\"\nProgrammed by STG, with extensive help from Whodeyy \nand the rest of the MSS community")
         labelWarning.grid(row=1,column=1, rowspan=4)
 
