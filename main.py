@@ -627,6 +627,7 @@ class mssApp:
         tabOptions.pack(padx=30,pady=30)
         lpaneMiis = tk.LabelFrame(tabOptions, text="Miis")
         lpaneMiis.grid(row=0, column=0)
+        labelMiis = tk.Label(lpaneMiis, text="Please enter the path to your RFL_DB.dat\nMore info: https://jackharrhy.github.io/mii-lib/")
         varPath = tk.StringVar()
         varPath.set(options["MiiDBPath"])
         entryPath = tk.Entry(lpaneMiis, textvariable=varPath)
