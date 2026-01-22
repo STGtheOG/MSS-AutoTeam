@@ -13,6 +13,9 @@ import keyboard as kb
 import time
 from mii import MiiDatabase, MiiParser, MiiType
 
+#Safe delay times that work. Faster times may work but if things start to break, revert to 0.05, 0.05. 
+INPUT_DELAY  = 0.05
+RELEASE_DELAY = 0.05
 
 
 
@@ -27,6 +30,9 @@ with open('options.json') as json_data:
     file = json.load(json_data)
     json_data.close()
 options = file
+options.setdefault('DefaultAwayCaptainID', 0)
+options.setdefault('DefaultHomeCaptainID', 1)
+
 def str_to_hex(str):
     hx = 0x0
     for c in str:
@@ -134,8 +140,6 @@ class Formationizer:
         time.sleep(0.25)
         self.startGame()
 
-
-
     def sel_code_rev(self):
         t1miis = []
         t2miis = []
@@ -147,22 +151,52 @@ class Formationizer:
         self.handleMiis(t1miis, 0)
         self.handleMiis(t2miis, 1)
 
-    def handleMiis(self, arr, dir):
-        if len(arr) > 0:
+    
+    def handleMiis(self, arr, dir, total_miis=None):
+        # Prefer explicit total_miis, otherwise try to use a value stored on the class
+        if total_miis is None:
+            total_miis = getattr(self, "total_miis", None) or getattr(self, "mii_count", None)
 
+        # If we STILL don't know, we can’t reliably detect the "overall last page"
+        if total_miis is None:
+            raise ValueError(
+                "handleMiis needs total_miis (or set self.total_miis / self.mii_count) "
+                "to correctly handle the last page for arbitrary Mii counts."
+            )
+
+        last_page = (total_miis - 1) // 10  # 0-based last page index
+
+        if len(arr) > 0:
             for i in range(len(arr)):
                 self.execute("awllllll")
-                v = arr[i][0]
+                idx = arr[i][0]
+                v = idx
+
+                target_page = idx // 10  # 0-based page we need
+                turns = 0
+
                 while v >= 10:
                     v -= 10
+                    turns += 1
                     self.execute("rrrrralllll")
+
+                # ✅ Apply your special anchor ONLY if the target Mii is on the overall last page
+                # This prevents it from firing on "first pass" for normal pages.
+                if target_page == last_page and turns == target_page:
+                    self.press_left()
+                    self.press_left()
+                    self.press_left()
+                    self.press_up()
+
                 for n in range(v % 5):
                     self.press_right()
                 if v >= 5:
                     self.press_down()
+
                 self.press_a()
                 self.press_b()
                 time.sleep(0.5)
+
         if dir == 0:
             self.execute("uuadd")
         else:
@@ -360,9 +394,11 @@ class Formationizer:
         if self.team2[0][0] in captains:
             c2 = captains.index(self.team2[0][0])
         if c1 == -1:
-            c1 = 1 if c2 == 0 else 0
+            default_away_id = int(options.get('DefaultAwayCaptainID', captains[0]))
+            c1 = captains.index(default_away_id) if default_away_id in captains else 0
         if c2 == -1:
-            c2 = 1 if c1 == 0 else 0
+            default_home_id = int(options.get('DefaultHomeCaptainID', captains[1] if len(captains) > 1 else captains[0]))
+            c2 = captains.index(default_home_id) if default_home_id in captains else (1 if len(captains) > 1 else 0)
         DMM.write_byte(0x811f76ac, c1)
         DMM.write_byte(0x811f76ad, c2)
 
@@ -385,76 +421,76 @@ class Formationizer:
                     return [r, c]
         return -1
 
-
-
     def press_a(self):
         kb.press('k')
-        time.sleep(speed_const)
+        time.sleep(INPUT_DELAY)
         kb.release('k')
-        time.sleep(speed_const)
+        time.sleep(RELEASE_DELAY)
 
     def press_b(self):
         kb.press('l')
-        time.sleep(speed_const)
+        time.sleep(INPUT_DELAY)
         kb.release('l')
-        time.sleep(speed_const)
+        time.sleep(RELEASE_DELAY)
 
     def press_left(self):
         kb.press('a')
-        time.sleep(speed_const)
+        time.sleep(INPUT_DELAY)
         kb.release('a')
-        time.sleep(speed_const)
+        time.sleep(RELEASE_DELAY)
 
     def press_right(self):
         kb.press('d')
-        time.sleep(speed_const)
+        time.sleep(INPUT_DELAY)
         kb.release('d')
-        time.sleep(speed_const)
+        time.sleep(RELEASE_DELAY)
 
     def press_up(self):
         kb.press('w')
-        time.sleep(speed_const)
+        time.sleep(INPUT_DELAY)
         kb.release('w')
-        time.sleep(speed_const)
+        time.sleep(RELEASE_DELAY)
 
     def press_down(self):
         kb.press('s')
-        time.sleep(speed_const)
+        time.sleep(INPUT_DELAY)
         kb.release('s')
-        time.sleep(speed_const)
+        time.sleep(RELEASE_DELAY)
 
     def press_plus(self):
         kb.press('e')
-        time.sleep(speed_const)
+        time.sleep(INPUT_DELAY)
         kb.release('e')
-        time.sleep(speed_const)
+        time.sleep(RELEASE_DELAY)
+
 
     def startGame(self):
         kb.press('q')
-        time.sleep(speed_const)
+        time.sleep(INPUT_DELAY)
         kb.press('k')
-        time.sleep(speed_const)
+        time.sleep(INPUT_DELAY)
         kb.release('k')
-        time.sleep(speed_const)
+        time.sleep(RELEASE_DELAY)
         kb.release('q')
+        time.sleep(RELEASE_DELAY)
 
-
-
-    def execute(self, inst):
-
-        for c in inst:
-            if c == 'u':
+    def execute(self, instructions):
+        for i in instructions:
+            if i == "u":
                 self.press_up()
-            elif c == 'd':
+            elif i == "d":
                 self.press_down()
-            elif c == 'l':
+            elif i == "l":
                 self.press_left()
-            elif c == 'r':
+            elif i == "r":
                 self.press_right()
-            elif c == 'a':
+            elif i == "a":
                 self.press_a()
-            elif c == 'w':
+            elif i == "w":
                 time.sleep(0.5)
+
+        time.sleep(INPUT_DELAY)   # <-- important
+
 
     def setAway(self, team):
         self.team1 = team
@@ -480,6 +516,8 @@ class Formationizer:
 myFormationizer = Formationizer([[0, 0, 0], [0, 1, 1], [0, 2, 2], [0, 3, 3], [0, 4, 4], [0, 5, 5], [0, 6, 6], [0, 7, 7], [0, 8, 8]],
                                            [[1, 0, 0], [1, 1, 1], [1, 2, 2], [1, 3, 3], [1, 4, 4], [1, 5, 5], [1, 6, 6], [1, 7, 7], [1, 8, 8]],
                           [0x0, 0], [9, 1, 1, 0])
+myFormationizer.total_miis = len(mii_list)
+print("[INFO] total_miis =", myFormationizer.total_miis)
 
 class mssApp:
     def __init__(self):
@@ -611,17 +649,29 @@ class mssApp:
                 self.entries[i] = ttk.Combobox(lpaneCaptain, values=sorted(charList))
                 self.entries[i].pack()
                 self.entries[i].bind('<<ComboboxSelected>>',
-                                     lambda event: self.updateLists(self.entries, self.battings, self.fieldings))
+                                    lambda event: self.updateLists(self.entries, self.battings, self.fieldings))
             else:
                 self.entries[i] = ttk.Combobox(lpaneSelect, values=sorted(charList))
                 self.entries[i].grid(row=i, column=0)
                 self.entries[i].bind('<<ComboboxSelected>>', lambda event: self.updateLists(self.entries,self.battings,self.fieldings))
+
+            # Batting dropdowns (unchanged)
             self.battings[i] = ttk.Combobox(lpaneBatting, values=self.toBat)
             self.battings[i].grid(row=0,column=i)
             self.battings[i].bind('<<ComboboxSelected>>', lambda event: self.updateLists(self.entries, self.battings, self.fieldings))
+
+            # ---- NEW: Fielding label + dropdown ----
+            row = fsu[i][0]
+            col = fsu[i][1] * 2   # spread out columns so label + box fit
+
+            # Label showing position (P, C, 1B, etc.)
+            tk.Label(lpaneFielding, text=positions[i]).grid(row=row, column=col, padx=(0,4), sticky="e")
+
+            # Fielding dropdown
             self.fieldings[i] = ttk.Combobox(lpaneFielding)
-            self.fieldings[i].grid(row=fsu[i][0],column=fsu[i][1])
+            self.fieldings[i].grid(row=row, column=col + 1)
             self.fieldings[i].bind('<<ComboboxSelected>>', lambda event: self.updateLists(self.entries, self.battings, self.fieldings))
+
 
         tabOptions = tk.Frame(nb, height=1400, width=700)
         tabOptions.pack(padx=30,pady=30)
@@ -636,6 +686,33 @@ class mssApp:
         buttonMiiSave = tk.Button(lpaneMiis, text="Save")
         buttonMiiSave.grid(row=1, column=1)
         buttonMiiSave.bind('<ButtonPress-1>', lambda event: self.updateChars(varPath.get()))
+
+        # Default captains to use when a selected player isn't one of the 12 captains
+        lpaneDefaults = tk.LabelFrame(tabOptions, text='Default Captains')
+        lpaneDefaults.grid(row=1, column=0, pady=10, sticky='w')
+
+        captainNameValues = [charList[i] for i in captains]
+
+        tk.Label(lpaneDefaults, text='Away default:').grid(row=0, column=0, sticky='w')
+        varAwayDefault = tk.StringVar()
+        away_default_id = int(options.get('DefaultAwayCaptainID', captains[0]))
+        away_idx = captains.index(away_default_id) if away_default_id in captains else 0
+        varAwayDefault.set(captainNameValues[away_idx])
+        comboAwayDefault = ttk.Combobox(lpaneDefaults, textvariable=varAwayDefault, values=captainNameValues, state='readonly')
+        comboAwayDefault.grid(row=0, column=1, padx=5, pady=2)
+
+        tk.Label(lpaneDefaults, text='Home default:').grid(row=1, column=0, sticky='w')
+        varHomeDefault = tk.StringVar()
+        home_default_id = int(options.get('DefaultHomeCaptainID', captains[1] if len(captains) > 1 else captains[0]))
+        home_idx = captains.index(home_default_id) if home_default_id in captains else (1 if len(captains) > 1 else 0)
+        varHomeDefault.set(captainNameValues[home_idx])
+        comboHomeDefault = ttk.Combobox(lpaneDefaults, textvariable=varHomeDefault, values=captainNameValues, state='readonly')
+        comboHomeDefault.grid(row=1, column=1, padx=5, pady=2)
+
+        buttonDefaultsSave = tk.Button(lpaneDefaults, text='Save Defaults')
+        buttonDefaultsSave.grid(row=2, column=1, sticky='e', pady=(6, 0))
+        buttonDefaultsSave.bind('<ButtonPress-1>',
+                               lambda event: self.updateDefaultCaptains(varAwayDefault.get(), varHomeDefault.get(), captainNameValues))
 
 
         nb.add(tabMain, text="Main")
@@ -693,6 +770,8 @@ class mssApp:
         print(teams)
 
     def updateChars(self, p):
+        global mii_list, charList, myFormationizer
+
         options["MiiDBPath"] = p
         mii_list = []
         try:
@@ -705,6 +784,10 @@ class mssApp:
                     print(mii.name)
         except:
             print("File error")
+
+        # ✅ update Formationizer's total_miis whenever DB changes
+        myFormationizer.total_miis = len(mii_list)
+        print("[INFO] total_miis updated =", myFormationizer.total_miis)
 
         with open("options.json", mode="w", encoding="utf-8") as write_file:
             json.dump(options, write_file)
@@ -735,6 +818,25 @@ class mssApp:
         for e in self.entries:
             e.configure(values=sorted(charList))
 
+
+    def updateDefaultCaptains(self, away_name, home_name, captainNameValues):
+        """Persist default captain selections to options.json as character IDs."""
+        try:
+            away_idx = captainNameValues.index(away_name)
+            home_idx = captainNameValues.index(home_name)
+        except ValueError:
+            showerror('Error', 'Could not save defaults: invalid captain selection.')
+            return
+
+        options['DefaultAwayCaptainID'] = captains[away_idx]
+        options['DefaultHomeCaptainID'] = captains[home_idx]
+
+        try:
+            with open('options.json', 'w') as outfile:
+                json.dump(options, outfile, indent=4)
+            showinfo('Saved', 'Default captains saved!')
+        except Exception as e:
+            showerror('Error', f'Failed to write options.json: {e}')
     def updateTeams(self, ca, ch, ct):
         ca.configure(values=team_names)
         ch.configure(values=team_names)
@@ -823,7 +925,3 @@ def getText(team):
 
 
 appInst= mssApp()
-
-
-
-

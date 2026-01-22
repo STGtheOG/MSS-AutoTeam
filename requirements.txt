@@ -5,7 +5,7 @@ keyboard==0.13.5
 markdown-it-py==3.0.0
 mdurl==0.1.2
 mii-cli==0.2.0
-mii-lib==0.1.0
+mii-lib==0.2.0
 PyGetWindow==0.0.9
 pygments==2.19.2
 PyRect==0.2.0
