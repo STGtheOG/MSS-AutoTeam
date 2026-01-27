@@ -7,6 +7,11 @@ on:
       - build-and-ci
   workflow_dispatch:
 
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
 jobs:
   build-and-release:
     runs-on: windows-latest
@@ -68,3 +73,24 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate index.html for GitHub Pages
+        run: |
+          $template = Get-Content index.html -Raw
+          $release_name = "${{ steps.release_info.outputs.release_name }}"
+          $download_url = "https://github.com/STGtheOG/MSS-AutoTeam/releases/download/$release_name/mss-autoteam-$release_name.zip"
+          $html = $template -replace '{{RELEASE_NAME}}', $release_name
+          $html = $html -replace '{{DOWNLOAD_URL}}', $download_url
+          mkdir -p _pages
+          Set-Content -Path _pages/index.html -Value $html
+          Write-Host "Generated index.html with release: $release_name"
+        shell: pwsh
+
+      - name: Deploy to GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '_pages'
+
+      - name: Publish to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
