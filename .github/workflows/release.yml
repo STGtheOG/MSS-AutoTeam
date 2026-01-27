@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - build-and-ci
   workflow_dispatch:
 
 permissions:
