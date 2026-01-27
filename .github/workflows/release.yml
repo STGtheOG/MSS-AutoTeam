@@ -1,0 +1,70 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+      - build-and-ci
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Run build script
+        run: .\build.bat
+        shell: cmd
+
+      - name: Generate timestamp and short hash
+        id: release_info
+        run: |
+          $date = Get-Date -Format "yyyy-MM-dd"
+          $hash = git rev-parse --short HEAD
+          $release_name = "$date-$hash"
+          $commit_msg = git log -1 --pretty=%B
+          echo "release_name=$release_name" >> $env:GITHUB_OUTPUT
+          # Use a delimiter for multiline content
+          echo "commit_msg<<EOF" >> $env:GITHUB_OUTPUT
+          echo "$commit_msg" >> $env:GITHUB_OUTPUT
+          echo "EOF" >> $env:GITHUB_OUTPUT
+          echo "Release name: $release_name"
+        shell: pwsh
+
+      - name: Create zip archive
+        run: |
+          $compress = @{
+            Path = "dist\*"
+            DestinationPath = "mss-autoteam-${{ steps.release_info.outputs.release_name }}.zip"
+          }
+          Compress-Archive @compress
+        shell: pwsh
+
+      - name: Prepare release notes
+        id: notes
+        run: |
+          $readme = Get-Content README.md -Raw
+          $body = "$readme`n`n---`n`n${{ steps.release_info.outputs.commit_msg }}"
+          echo "body<<EOF" >> $env:GITHUB_OUTPUT
+          echo "$body" >> $env:GITHUB_OUTPUT
+          echo "EOF" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.release_info.outputs.release_name }}
+          name: ${{ steps.release_info.outputs.release_name }}
+          body: ${{ steps.notes.outputs.body }}
+          files: mss-autoteam-${{ steps.release_info.outputs.release_name }}.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
