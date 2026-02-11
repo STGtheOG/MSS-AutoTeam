@@ -12,11 +12,27 @@ permissions:
   id-token: write
 
 jobs:
-  build-and-release:
-    runs-on: windows-latest
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+          - os: macos-latest
+            platform: macos
+          - os: ubuntu-latest
+            platform: linux
+    runs-on: ${{ matrix.os }}
+    env:
+      UV_PYTHON_PREFERENCE: only-system
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
@@ -24,42 +40,63 @@ jobs:
           version: "latest"
 
       - name: Run build script
-        run: .\build.bat
-        shell: cmd
-
-      - name: Generate timestamp and short hash
-        id: release_info
-        run: |
-          $date = Get-Date -Format "yyyy-MM-dd"
-          $hash = git rev-parse --short HEAD
-          $release_name = "$date-$hash"
-          $commit_msg = git log -1 --pretty=%B
-          echo "release_name=$release_name" >> $env:GITHUB_OUTPUT
-          # Use a delimiter for multiline content
-          echo "commit_msg<<EOF" >> $env:GITHUB_OUTPUT
-          echo "$commit_msg" >> $env:GITHUB_OUTPUT
-          echo "EOF" >> $env:GITHUB_OUTPUT
-          echo "Release name: $release_name"
-        shell: pwsh
+        run: python build.py
 
       - name: Create zip archive
+        shell: bash
         run: |
-          $compress = @{
-            Path = "dist\*"
-            DestinationPath = "mss-autoteam-${{ steps.release_info.outputs.release_name }}.zip"
-          }
-          Compress-Archive @compress
-        shell: pwsh
+          if [ "${{ matrix.platform }}" = "windows" ]; then
+            7z a mss-autoteam-${{ matrix.platform }}.zip ./dist/*
+          else
+            cd dist && zip -r ../mss-autoteam-${{ matrix.platform }}.zip . && cd ..
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mss-autoteam-${{ matrix.platform }}
+          path: mss-autoteam-${{ matrix.platform }}.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate release tag
+        id: release_info
+        shell: bash
+        run: |
+          date=$(date +"%Y-%m-%d")
+          hash=$(git rev-parse --short HEAD)
+          release_name="${date}-${hash}"
+          commit_msg=$(git log -1 --pretty=%B)
+          echo "release_name=${release_name}" >> "$GITHUB_OUTPUT"
+          echo "commit_msg<<EOF" >> "$GITHUB_OUTPUT"
+          echo "${commit_msg}" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "Release name: ${release_name}"
 
       - name: Prepare release notes
         id: notes
+        shell: bash
         run: |
-          $readme = Get-Content README.md -Raw
-          $body = "$readme`n`n---`n`n${{ steps.release_info.outputs.commit_msg }}"
-          echo "body<<EOF" >> $env:GITHUB_OUTPUT
-          echo "$body" >> $env:GITHUB_OUTPUT
-          echo "EOF" >> $env:GITHUB_OUTPUT
-        shell: pwsh
+          readme=$(cat README.md)
+          commit_msg="${{ steps.release_info.outputs.commit_msg }}"
+          body="${readme}
+
+          ---
+
+          ${commit_msg}"
+          echo "body<<EOF" >> "$GITHUB_OUTPUT"
+          echo "${body}" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
@@ -67,23 +104,30 @@ jobs:
           tag_name: ${{ steps.release_info.outputs.release_name }}
           name: ${{ steps.release_info.outputs.release_name }}
           body: ${{ steps.notes.outputs.body }}
-          files: mss-autoteam-${{ steps.release_info.outputs.release_name }}.zip
+          files: |
+            artifacts/mss-autoteam-windows/mss-autoteam-windows.zip
+            artifacts/mss-autoteam-macos/mss-autoteam-macos.zip
+            artifacts/mss-autoteam-linux/mss-autoteam-linux.zip
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate index.html for GitHub Pages
+        shell: bash
         run: |
-          $template = Get-Content index.html -Raw
-          $release_name = "${{ steps.release_info.outputs.release_name }}"
-          $download_url = "https://github.com/STGtheOG/MSS-AutoTeam/releases/download/$release_name/mss-autoteam-$release_name.zip"
-          $html = $template -replace '{{RELEASE_NAME}}', $release_name
-          $html = $html -replace '{{DOWNLOAD_URL}}', $download_url
+          release_name="${{ steps.release_info.outputs.release_name }}"
+          windows_url="https://github.com/STGtheOG/MSS-AutoTeam/releases/download/${release_name}/mss-autoteam-windows.zip"
+          macos_url="https://github.com/STGtheOG/MSS-AutoTeam/releases/download/${release_name}/mss-autoteam-macos.zip"
+          linux_url="https://github.com/STGtheOG/MSS-AutoTeam/releases/download/${release_name}/mss-autoteam-linux.zip"
           mkdir -p _pages
-          Set-Content -Path _pages/index.html -Value $html
-          Write-Host "Generated index.html with release: $release_name"
-        shell: pwsh
+          sed \
+            -e "s|{{RELEASE_NAME}}|${release_name}|g" \
+            -e "s|{{WINDOWS_DOWNLOAD_URL}}|${windows_url}|g" \
+            -e "s|{{MACOS_DOWNLOAD_URL}}|${macos_url}|g" \
+            -e "s|{{LINUX_DOWNLOAD_URL}}|${linux_url}|g" \
+            index.html > _pages/index.html
+          echo "Generated index.html with release: ${release_name}"
 
       - name: Deploy to GitHub Pages
         uses: actions/upload-pages-artifact@v3
